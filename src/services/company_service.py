@@ -1,7 +1,94 @@
 from models.models import CompanyName, Company, CompanyTags, Tag, TagLocalization
 from util import logger
+from sqlalchemy import func
 
 log = logger.create_logger('company_service')
+
+def get_companies_by_name_match(name: str):
+    search_string = '%{}%'.format(name).lower()
+    query = CompanyName.query.filter(func.lower(CompanyName.name).ilike("%{}%".format(name)))
+    result = query.all()
+    log.debug("Searching for companies with name contains {}, {} records returned".format(search_string, len(result)))
+    return format_company_list_output(map(lambda c:c.company, result))
+
+def get_company_by_id(id: str):
+    result = Company.query.filter_by(id=id).first()
+    return format_company_output(result)
+
+def get_companies_by_name_exact(name: str):
+    result = CompanyName.query.filter_by(name=name).all()
+    return format_company_list_output(map(lambda c:c.company, result))
+
+def get_companies_by_tag(tag_name: str):
+    tag_localization = TagLocalization.query.filter_by(name=tag_name).all()
+    tag_uuids = map(lambda tl:tl.tag_id, tag_localization)
+    if tag_localization != None:
+        company_tags = CompanyTags.query.filter(CompanyTags.tag_id.in_(tag_uuids)).all()
+        log.info(company_tags)
+        return format_company_list_output(map(lambda t:t.company, company_tags))
+    else:
+        return None
+
+# Maps list of CompanyName records to Company records, removing duplicate Company entries
+def format_company_list_output(company_records: list):
+    uuids = set()
+    companies = []
+
+    for company_record in company_records:
+        if company_record.id in uuids:
+            continue
+        else:
+            uuids.add(company_record.id)
+            company = format_company_output(company_record)
+            companies.append(company)
+    return companies
+
+def format_company_output(company_record):
+    company = { 
+        "id": company_record.id,
+        "names": { },
+        "tags": [ ]
+    }
+    for name in company_record.names:
+        company["names"][name.language] = name.name
+    for company_tag in company_record.tags:
+        tag = {
+            "id": company_tag.tag_id,
+            "localizations": { }
+        }
+        for localization in company_tag.tag.localizations:
+            tag["localizations"][localization.language] = localization.name
+        company["tags"].append(tag)
+    return company
+
+# Maps list of CompanyName records to Company records, removing duplicate Company entries
+def map_company_names_to_companies(company_names: list):
+    uuids = set()
+    companies = []
+
+    for company_name in company_names:
+        if company_name.company_id in uuids:
+            continue
+        else:
+            uuids.add(company_name.company_id)
+            company = { 
+                "id": company_name.company_id,
+                "names": { },
+                "tags": [ ]
+            }
+            for name in company_name.company.names:
+                company["names"][name.language] = name.name
+            for company_tag in company_name.company.tags:
+                tag = {
+                    "id": company_tag.tag_id,
+                    "localizations": { }
+                }
+                for localization in company_tag.tag.localizations:
+                    tag["localizations"][localization.language] = localization.name
+                company["tags"].append(tag)
+
+            companies.append(company)
+    return companies
 
 def insert_company_from_csv(db, items: list):
     company_ko = items[0].strip(" ")

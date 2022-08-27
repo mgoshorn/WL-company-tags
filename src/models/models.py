@@ -16,13 +16,14 @@ db = SQLAlchemy()
 
 class Company(db.Model):
     id = db.Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    names = db.relationship('CompanyName', backref="company")
+    names = db.relationship('CompanyName')
     tags = db.relationship('CompanyTags')
 
 class CompanyName(db.Model):
     company_id = db.Column(UUID(as_uuid=True), db.ForeignKey('company.id'), primary_key=True)
     language = db.Column(db.String, primary_key=True)
     name = db.Column(db.String, nullable=False)
+    company = db.relationship("Company", foreign_keys="CompanyName.company_id")
 
 # On Tags
 # Given that the tag concept is that there is a shared meaning that is localized into a variety of languages

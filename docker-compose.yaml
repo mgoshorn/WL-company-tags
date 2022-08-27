@@ -11,7 +11,7 @@ services:
     depends_on:
       - db
     ports:
-      - 3000:3000
+      - 5000:5000
     environment:
       DB_URL: 'postgresql://postgres:${DB_PASSWORD}@db:5432/postgres'
       POPULATE_DATABASE: True

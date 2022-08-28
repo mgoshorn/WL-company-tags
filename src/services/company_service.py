@@ -1,12 +1,23 @@
 from models.models import CompanyName, Company, CompanyTags, Tag, TagLocalization
-from util import logger
 from sqlalchemy import func
 from models.models import db
 from sqlalchemy.exc import IntegrityError
+from util import logger
 from util.errors import AmbiguousRecordError, NotFoundError, UniqueViolationError
+from util.iso639_1 import languages as iso639_1
+
+"""
+    Contains internal service logic relating to companies and tags
+"""
 
 log = logger.create_logger('company_service')
+language_set = set(map(lambda lang:lang[0], iso639_1))
 
+""" 
+    Used to search for companies using incomplete company names
+    Will return a list of companies which includes companies with names that match the input
+    string in any stored language
+"""
 def get_companies_by_name_match(name: str):
     search_string = '%{}%'.format(name).lower()
     query = CompanyName.query.filter(func.lower(CompanyName.name).ilike("%{}%".format(name)))
@@ -14,14 +25,22 @@ def get_companies_by_name_match(name: str):
     log.debug("Searching for companies with name contains {}, {} records returned".format(search_string, len(result)))
     return format_company_list_output(map(lambda c:c.company, result))
 
+""" Get company by UUID value """
 def get_company_by_id(id: str):
     result = Company.query.filter_by(id=id).first()
     return format_company_output(result)
 
+""" 
+    Get companies which exactly match the input company name
+    Returned as a list, as it is possible that the same name could be used between different
+    locations
+"""
 def get_companies_by_name_exact(name: str):
     result = CompanyName.query.filter_by(name=name).all()
     return format_company_list_output(map(lambda c:c.company, result))
+"""
 
+"""
 def get_companies_by_tag(tag_name: str):
     tag_localization = TagLocalization.query.filter_by(name=tag_name).all()
     tag_uuids = map(lambda tl:tl.tag_id, tag_localization)
@@ -32,7 +51,7 @@ def get_companies_by_tag(tag_name: str):
     else:
         return None
 
-# Maps list of CompanyName records to Company records, removing duplicate Company entries
+""" Maps list of CompanyName records to Company records, removing duplicate Company entries """
 def format_company_list_output(company_records: list):
     uuids = set()
     companies = []
@@ -46,6 +65,7 @@ def format_company_list_output(company_records: list):
             companies.append(company)
     return companies
 
+""" Utility function to map entity storage objects to service output format """
 def format_company_output(company_record):
     company = { 
         "id": company_record.id,
@@ -64,7 +84,7 @@ def format_company_output(company_record):
         company["tags"].append(tag)
     return company
 
-# Maps list of CompanyName records to Company records, removing duplicate Company entries
+""" Maps list of CompanyName records to Company records, removing duplicate Company entries """
 def map_company_names_to_companies(company_names: list):
     uuids = set()
     companies = []
@@ -93,9 +113,9 @@ def map_company_names_to_companies(company_names: list):
             companies.append(company)
     return companies
 
-def add_company_tag_record(company_name, tag_name, language=None):
+""" Create a company tag record between existing company and tag """
+def add_company_tag_record(company_name: str, tag_name: str, language=None):
     ids = get_tag_ids_by_name(tag_name, language=language)
-    log.info(ids)
     if len(ids) == 0:
         raise NotFoundError("No tag found with provided name.")
     if len(ids) > 1:
@@ -105,7 +125,6 @@ def add_company_tag_record(company_name, tag_name, language=None):
         raise NotFoundError("No companies found with provided name.")
     if len(companies) > 1:
         raise AmbiguousRecordError("Multiple companies matching company name %."%company_name)
-    log.info(companies[0])
     tag_record = CompanyTags(company_id=companies[0]["id"], tag_id=ids[0])
     db.session.add(tag_record)
     try:
@@ -113,8 +132,61 @@ def add_company_tag_record(company_name, tag_name, language=None):
     except IntegrityError:
         raise UniqueViolationError("Tag already present on company")
 
+
+""" Remove a company tag record """
+def remove_tag_from_company(company_name: str, tag_name: str, language=None):
+    ids = get_tag_ids_by_name(tag_name, language=language)
+    if len(ids) == 0:
+        raise NotFoundError("No tag found with provided name.")
+    if len(ids) > 1:
+        raise AmbiguousRecordError("Multiple tags matching tag name %."%tag_name)
+    companies = get_companies_by_name_exact(company_name)
+    if len(companies) == 0:
+        raise NotFoundError("No companies found with provided name.")
+    if len(companies) > 1:
+        raise AmbiguousRecordError("Multiple companies matching company name %."%company_name)
+
+    tag_record = CompanyTags.query.filter_by(company_id=companies[0]["id"], tag_id=ids[0]).first()
+    db.session.delete(tag_record)
+    db.session.commit()
+
+""" Add company tag record utilizing UUIDs for Company, Tag - avoids ambiguity in names """
+def add_company_tag_record_by_uuid(company_uuid: str, tag_uuid: str):
+    company = Company.query.filter_by(id=company_uuid).first()
+    tag = Tag.query.filter_by(id=tag_uuid).first()
+    if company == None:
+        raise NotFoundError("No company found with provided UUID")
+    if tag == None:
+        raise NotFoundError("No tag found with provided UUID")
+    db.session.add(CompanyTags(company=company, tag=tag))
+    db.session.commit()
+
+""" Removes company tag record utilizing UUIDs for Company, Tag - avoids ambiguity in names """
+def remove_tag_from_company_by_uuid(company_uuid: str, tag_uuid: str):
+    tag = CompanyTags.query.filter_by(company_id=company_uuid, tag_id=tag_uuid).first()
+    db.session.delete(tag)
+    db.session.commit()
+
+"""
+    Will accept localization keys for any language matching iso 639-1 specification
+    as enumerated in src/util/iso639_1.py
+"""
+def create_tag(data):
+    keys = [p for p in data.keys() if p in language_set]
+    tag = Tag()
+    for key in keys:
+        tag.localizations.append(TagLocalization(language=key, name=data[key]))
+    db.session.add(tag)
+    db.session.commit()
+    payload = { "id": tag.id, "localizations": { }}
+    for localization in tag.localizations:
+        payload["localizations"][localization.language] = localization.name
+    return payload
+
+"""
+    Utility function to retrieve ID value of tags by a given name
+"""
 def get_tag_ids_by_name(tag_name: str, language=None):
-    log.info('x')
     if language == None:
         result = TagLocalization.query.filter_by(name=tag_name).all()
         log.info('y')
@@ -125,6 +197,9 @@ def get_tag_ids_by_name(tag_name: str, language=None):
         log.info(result)
         return [result.tag_id]
 
+"""
+    Utility function to insert CSV record data
+"""
 def insert_company_from_csv(db, items: list):
     company_ko = items[0].strip(" ")
     company_en = items[1].strip(" ")

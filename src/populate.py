@@ -4,6 +4,10 @@ from models.models import db
 from services import company_service
 import csv
 
+"""
+Utility script used to initialize the database from the provided CSV data
+"""
+
 log = create_logger('populate')
 
 def purge_db(db):

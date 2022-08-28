@@ -4,6 +4,10 @@ from services import company_service
 from sqlalchemy.exc import IntegrityError
 from util.errors import AmbiguousRecordError, NotFoundError, UniqueViolationError
 
+"""
+    Contains Flask request routing and response logic
+"""
+
 log = logger.create_logger('routes')
 
 def initialize_routes(app: Flask):
@@ -35,6 +39,7 @@ def initialize_routes(app: Flask):
         result = company_service.get_companies_by_name_exact(name)
         return jsonify(matches = result)
 
+    # Retrieves companies by tag name
     @app.get("/companies/tags/<tag>")
     def get_companies_by_tag(tag):
         result = company_service.get_companies_by_tag(tag)
@@ -48,7 +53,7 @@ def initialize_routes(app: Flask):
     # tags between language happen to have the same name but reference different
     # information
 
-    @app.post("/companies/<name>/tag/name/<tag>")
+    @app.post("/companies/name/<name>/tag/name/<tag>")
     def add_company_tag(name, tag):
         language = request.args.get('language', None)
         try:
@@ -61,7 +66,7 @@ def initialize_routes(app: Flask):
         except NotFoundError as ex:
             return ex.message, 404
 
-    @app.delete("/companies/<name>/tag/name/<tag>")
+    @app.delete("/companies/name/<name>/tag/name/<tag>")
     def delete_company_tag(name, tag):
         language = request.args.get('language', None)
         try:
@@ -72,9 +77,32 @@ def initialize_routes(app: Flask):
         except NonUniqueError as ex:
             return ex.message, 400
 
+    # Insertion/Deletion methods using uuid rather than names - offered to avoid ambiguity
+    @app.post("/companies/<company_uuid>/tag/<tag_uuid>")
+    def add_company_tag_by_uuid(company_uuid, tag_uuid):
+        try:
+            result = company_service.add_company_tag_record_by_uuid(company_uuid, tag_uuid)
+            return '', 201
+        except UniqueViolationError as ex:
+            return ex.message, 409
+        except NotFoundError as ex:
+            return ex.message, 404
+
+    @app.delete("/companies/<company_uuid>/tag/<tag_uuid>")
+    def delete_company_tag_by_uuid(company_uuid, tag_uuid):
+        try:
+            result = company_service.remove_tag_from_company_by_uuid(company_uuid, tag_uuid)
+            return '', 204
+        except UniqueViolationError as ex:
+            return ex.message, 409
+        except NonUniqueError as ex:
+            return ex.message, 400
+
+
     # Insertion of completely new tags
     # Expects a JSON payload in body defining names in each language
     @app.post("/tags")
     def create_tag():
         data = request.get_json()
         result = company_service.create_tag(data)
+        return jsonify(result), 201

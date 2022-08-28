@@ -8,4 +8,4 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY ./src ./src
 COPY ./wait-for-it.sh ./wait-for-it.sh
 COPY ./wanted-temp-data.csv ./wanted-temp-data.csv
-CMD [ "python", "./src/populate.py", "&&", "python", "./src/app.py"]
+CMD [ "python", "./src/app.py"]

@@ -1,6 +1,10 @@
 import os
 import logging
 
+"""
+    Utility logger used for the application
+"""
+
 def create_logger(name: str) -> logging.Logger:
     logger = logging.getLogger(name)
     logger.setLevel("DEBUG")

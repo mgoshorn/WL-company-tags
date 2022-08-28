@@ -5,14 +5,13 @@ from flask_sqlalchemy import SQLAlchemy
 from flask import Flask
 from util.logger import create_logger
 
+"""
+    Contains SQLAlchemy Model definitions and database initialization scripts
+"""
+
 log = create_logger("models")
 
 db = SQLAlchemy()
-
-# CompanyTags = db.Table("CompanyTags",
-#     db.Column("company_id", UUID(as_uuid=True), db.ForeignKey("company.id"), primary_key=True),
-#     db.Column("tag_id", UUID(as_uuid=True), db.ForeignKey("tag.id"), primary_key=True)
-# )
 
 class Company(db.Model):
     id = db.Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)

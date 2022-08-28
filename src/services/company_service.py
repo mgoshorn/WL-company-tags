@@ -1,6 +1,9 @@
 from models.models import CompanyName, Company, CompanyTags, Tag, TagLocalization
 from util import logger
 from sqlalchemy import func
+from models.models import db
+from sqlalchemy.exc import IntegrityError
+from util.errors import AmbiguousRecordError, NotFoundError, UniqueViolationError
 
 log = logger.create_logger('company_service')
 
@@ -89,6 +92,38 @@ def map_company_names_to_companies(company_names: list):
 
             companies.append(company)
     return companies
+
+def add_company_tag_record(company_name, tag_name, language=None):
+    ids = get_tag_ids_by_name(tag_name, language=language)
+    log.info(ids)
+    if len(ids) == 0:
+        raise NotFoundError("No tag found with provided name.")
+    if len(ids) > 1:
+        raise AmbiguousRecordError("Multiple tags matching tag name %."%tag_name)
+    companies = get_companies_by_name_exact(company_name)
+    if len(companies) == 0:
+        raise NotFoundError("No companies found with provided name.")
+    if len(companies) > 1:
+        raise AmbiguousRecordError("Multiple companies matching company name %."%company_name)
+    log.info(companies[0])
+    tag_record = CompanyTags(company_id=companies[0]["id"], tag_id=ids[0])
+    db.session.add(tag_record)
+    try:
+        db.session.commit()
+    except IntegrityError:
+        raise UniqueViolationError("Tag already present on company")
+
+def get_tag_ids_by_name(tag_name: str, language=None):
+    log.info('x')
+    if language == None:
+        result = TagLocalization.query.filter_by(name=tag_name).all()
+        log.info('y')
+        log.info(result)
+        return list(map(lambda tl:tl.tag_id, result))
+    else:
+        result = TagLocalization.query.filter_by(name=tag_name, language=language).first()
+        log.info(result)
+        return [result.tag_id]
 
 def insert_company_from_csv(db, items: list):
     company_ko = items[0].strip(" ")

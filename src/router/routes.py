@@ -1,6 +1,8 @@
 from flask import Flask, jsonify, request
 from util import logger
 from services import company_service
+from sqlalchemy.exc import IntegrityError
+from util.errors import AmbiguousRecordError, NotFoundError, UniqueViolationError
 
 log = logger.create_logger('routes')
 
@@ -49,14 +51,26 @@ def initialize_routes(app: Flask):
     @app.post("/companies/<name>/tag/name/<tag>")
     def add_company_tag(name, tag):
         language = request.args.get('language', None)
-        result = company_service.add_tag_to_company(name, tag, language=language)
-        return None, 201
+        try:
+            result = company_service.add_company_tag_record(name, tag, language=language)
+            return '', 201
+        except UniqueViolationError as ex:
+            return ex.message, 409
+        except AmbiguousRecordError as ex:
+            return ex.message, 400
+        except NotFoundError as ex:
+            return ex.message, 404
 
     @app.delete("/companies/<name>/tag/name/<tag>")
     def delete_company_tag(name, tag):
         language = request.args.get('language', None)
-        result = company_service.remove_tag_from_company(name, tag, language=language)
-        return None, 204
+        try:
+            result = company_service.remove_tag_from_company(name, tag, language=language)
+            return '', 204
+        except UniqueViolationError as ex:
+            return ex.message, 409
+        except NonUniqueError as ex:
+            return ex.message, 400
 
     # Insertion of completely new tags
     # Expects a JSON payload in body defining names in each language
